@@ -28,22 +28,7 @@ def init_logger(name: str, level: str):
     return logger
 
 
-logger = init_logger(__name__, os.getenv("ANSIBLE_GK_LOG_LEVEL", "info"))
-
-
-def validate_opa_installation(executable_name: str = "opa"):
-    proc = subprocess.run(
-        f"which {executable_name}",
-        shell=True,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if proc.stdout and proc.returncode == 0:
-        return
-    else:
-        raise ValueError("`opa` command is required to evaluate OPA policies")
+logger = init_logger(__name__, os.getenv("ANSIBLE_POLICY_LOG_LEVEL", "info"))
 
 
 def load_galaxy_data(fpath: str):
@@ -54,59 +39,6 @@ def load_galaxy_data(fpath: str):
         raise ValueError("loaded galaxy data is empty")
 
     return data.get("galaxy", {})
-
-
-def eval_opa_policy(rego_path: str, input_data: str, external_data_path: str, executable_name: str = "opa"):
-    rego_pkg_name = get_rego_main_package_name(rego_path=rego_path)
-    if not rego_pkg_name:
-        raise ValueError("`package` must be defined in the rego policy file")
-
-    util_rego_path = os.path.join(os.path.dirname(__file__), "rego/utils.rego")
-    external_data_option = ""
-    if external_data_path:
-        external_data_option = f"--data {external_data_path}"
-    cmd_str = f"{executable_name} eval --data {util_rego_path} --data {rego_path} {external_data_option} --stdin-input 'data.{rego_pkg_name}'"
-    proc = subprocess.run(
-        cmd_str,
-        shell=True,
-        input=input_data,
-        # stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    logger.debug(f"command: {cmd_str}")
-    logger.debug(f"proc.input_data: {input_data}")
-    logger.debug(f"proc.stdout: {proc.stdout}")
-    logger.debug(f"proc.stderr: {proc.stderr}")
-
-    if proc.returncode != 0:
-        error = f"failed to run `opa eval` command; error details:\nSTDOUT: {proc.stdout}\nSTDERR: {proc.stderr}"
-        raise ValueError(error)
-
-    result = json.loads(proc.stdout)
-    if "result" not in result:
-        raise ValueError(f"`result` field does not exist in the output from `opa eval` command; raw output: {proc.stdout}")
-
-    result_arr = result["result"]
-    if not result_arr:
-        raise ValueError(f"`result` field in the output from `opa eval` command has no contents; raw output: {proc.stdout}")
-
-    first_result = result_arr[0]
-    if not first_result and "expressions" not in first_result:
-        raise ValueError(f"`expressions` field does not exist in the first result of output from `opa eval` command; first_result: {first_result}")
-
-    expressions = first_result["expressions"]
-    if not expressions:
-        raise ValueError(f"`expressions` field in the output from `opa eval` command has no contents; first_result: {first_result}")
-
-    expression = expressions[0]
-    result_value = expression.get("value", {})
-    eval_result = {
-        "value": result_value,
-        "message": proc.stderr,
-    }
-    return eval_result
 
 
 def get_module_name_from_task(task):
@@ -156,18 +88,6 @@ def embed_module_info_with_galaxy(task, galaxy):
             "short_name": short_name,
         }
     return
-
-
-def get_rego_main_package_name(rego_path: str):
-    pkg_name = ""
-    with open(rego_path, "r") as file:
-        prefix = "package "
-        for line in file:
-            _line = line.strip()
-            if _line.startswith(prefix):
-                pkg_name = _line[len(prefix) :]
-                break
-    return pkg_name
 
 
 def uncompress_file(fpath: str):
@@ -242,38 +162,6 @@ def match_str_expression(pattern: str, text: str):
         return re.match(pattern, text)
 
     return pattern == text
-
-
-def detect_target_module_pattern(policy_path: str):
-    var_name = "__target_module__"
-    pattern = None
-    with open(policy_path, "r") as file:
-        for line in file:
-            if var_name in line:
-                parts = [p.strip() for p in line.split("=")]
-                if len(parts) != 2:
-                    continue
-                if parts[0] == var_name:
-                    pattern = parts[1].strip('"').strip("'")
-                    break
-    return pattern
-
-
-def detect_target_type_pattern(policy_path: str):
-    var_name = "__target__"
-    pattern = None
-    with open(policy_path, "r") as file:
-        for line in file:
-            if var_name in line:
-                parts = [p.strip() for p in line.split("=")]
-                if len(parts) != 2:
-                    continue
-                if parts[0] == var_name:
-                    pattern = parts[1].strip('"').strip("'")
-                    break
-    if not pattern:
-        pattern = default_target_type
-    return pattern
 
 
 def install_galaxy_target(target, target_type, output_dir, source_repository="", target_version=""):

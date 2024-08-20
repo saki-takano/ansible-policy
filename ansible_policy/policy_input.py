@@ -16,6 +16,8 @@ from ansible_policy.utils import (
     load_external_data,
     prepare_project_dir_from_runner_jobdata,
     embed_module_info_with_galaxy,
+    find_task_line_number,
+    find_play_line_number,
 )
 
 from ansible_content_capture.scanner import AnsibleScanner
@@ -30,8 +32,9 @@ from ansible_content_capture.models import (
     ScanResult,
     VariableContainer,
 )
-from ansible_content_capture.utils import extract_var_parts
-
+from ansible_content_capture.utils import (
+    extract_var_parts,
+)
 
 scanner = AnsibleScanner(silent=True)
 
@@ -123,6 +126,7 @@ def scan_project(
     runtime_data: RuntimeData = None,
     variables: Variables = None,
     output_dir: str = "",
+    override_filepath: str = "",
 ):
     _metadata = {}
     if metadata:
@@ -161,6 +165,7 @@ def scan_project(
             variables=variables,
             input_type=input_type,
             base_input=base_input,
+            override_filepath=override_filepath,
         )
         policy_input[input_type] = policy_input_per_type
 
@@ -463,6 +468,91 @@ class TaskResult(AnsibleTaskResult):
 
 
 @dataclass
+class CodeBlock(object):
+    begin: int = None
+    end: int = None
+
+    @staticmethod
+    def dict2str(line_dict: dict):
+        block = CodeBlock.from_dict(line_dict=line_dict)
+        return str(block)
+
+    @classmethod
+    def from_str(cls, line_str: str):
+        if line_str.startswith("L") and "-" in line_str:
+            parts = line_str.replace("L", "").split("-")
+            block = cls()
+            block.begin = parts[0]
+            block.end = parts[1]
+            return block
+
+        raise ValueError(f"failed to construct a CodeBlock from the string `{line_str}`")
+
+    @classmethod
+    def from_dict(cls, line_dict: dict):
+        if "begin" in line_dict and "end" in line_dict:
+            block = cls()
+            block.begin = line_dict["begin"]
+            block.end = line_dict["end"]
+            return block
+        elif "begin" in line_dict:
+            block = cls()
+            block.begin = line_dict["begin"]
+            return block
+
+        raise ValueError(f"failed to construct a CodeBlock from the dict `{line_dict}`")
+
+    def __repr__(self):
+        if not isinstance(self.begin, int):
+            raise ValueError("`begin` is not found for this code block")
+
+        if self.begin is not None and self.end is not None:
+            return f"L{self.begin}-{self.end}"
+        elif self.begin is not None:
+            return f"L{self.begin}"
+        else:
+            return ""
+
+    def to_dict(self):
+        return {"begin": self.begin, "end": self.end}
+
+
+@dataclass
+class LineIdentifier(object):
+    def find_block(self, body: str, obj: Union[Task, Play]) -> CodeBlock:
+        if not body:
+            return None
+
+        if not isinstance(obj, (Task, Play)):
+            raise TypeError(f"find a code block for {type(obj)} object is not supported")
+
+        if isinstance(obj, Task):
+            task = obj
+            _, lines = find_task_line_number(
+                yaml_body=body,
+                task_name=task.name,
+                module_name=task.module,
+                module_options=task.module_options,
+                task_options=task.options,
+            )
+            if lines and len(lines) == 2:
+                return CodeBlock(begin=lines[0], end=lines[1])
+
+        elif isinstance(obj, Play):
+            play = obj
+            _, lines = find_play_line_number(
+                yaml_body=body,
+                play_name=play.name,
+                play_options=play.options,
+            )
+            if lines and len(lines) == 2:
+                return CodeBlock(begin=lines[0], end=lines[1])
+
+        return None
+
+
+
+@dataclass
 class Event(object):
     filepath: str = ""
     line: int = ""
@@ -569,7 +659,13 @@ class PolicyInput(object):
     # others?
 
     @staticmethod
-    def from_scan_result(project: ScanResult, runtime_data: RuntimeData = None, variables: Variables = None, input_type: str = "", base_input=None):
+    def from_scan_result(
+        project: ScanResult,
+        runtime_data: RuntimeData = None,
+        variables: Variables = None,
+        input_type: str = "",
+        base_input=None,
+        override_filepath: str=""):
         if input_type == InputTypeTask:
             if not base_input:
                 base_input_list = PolicyInput.from_scan_result(project=project, runtime_data=runtime_data, variables=variables)
@@ -584,6 +680,8 @@ class PolicyInput(object):
                     tasks.extend(taskfile.tasks)
             p_input_list = []
             for task in tasks:
+                if task.filepath == "__in_memory__":
+                    task.filepath = override_filepath
                 p_input = copy.deepcopy(base_input)
                 p_input.type = InputTypeTask
                 p_input.task = task
@@ -598,6 +696,8 @@ class PolicyInput(object):
                 plays.extend(playbook.plays)
             p_input_list = []
             for play in plays:
+                if play.filepath == "__in_memory__":
+                    play.filepath = override_filepath
                 p_input = copy.deepcopy(base_input)
                 p_input.type = InputTypePlay
                 p_input.play = play
@@ -909,6 +1009,7 @@ def make_policy_input_with_scan(target_path: str, metadata: dict = {}, variables
         with open(fpath, "r") as file:
             yaml_str = file.read()
         kwargs["yaml_str"] = yaml_str
+        kwargs["override_filepath"] = target_path
     elif dpath:
         kwargs["project_dir"] = dpath
     else:
