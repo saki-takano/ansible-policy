@@ -23,7 +23,7 @@ from ansible_policy.rego_data import (
     load_input_from_rest_data,
     process_input_data_with_external_data,
 )
-from ansible_policy.policybook.transpiler import PolicyTranspiler
+from ansible_policy.policybook_rego.transpiler import PolicyTranspiler
 from ansible_policy.utils import (
     init_logger,
     transpile_yml_policy,
@@ -430,7 +430,13 @@ class PolicyResult(object):
 
     def add_target_result(self, obj: any, lines: dict, validated: bool, message: str, action_type: str):
         target_name = getattr(obj, "name", None)
-        target = TargetResult(name=target_name, lines=lines, validated=validated, message=message, action_type=action_type)
+        target = TargetResult(
+            name=target_name,
+            lines=lines,
+            validated=validated,
+            message=message,
+            action_type=action_type,
+        )
         if isinstance(validated, bool) and not validated:
             if action_type == "deny" or action_type == "allow":
                 self.violation = True
@@ -465,7 +471,13 @@ class FileResult(object):
             )
             need_append = True
         if is_target_type:
-            policy_result.add_target_result(obj=obj, lines=lines, validated=validated, message=message, action_type=action_type)
+            policy_result.add_target_result(
+                obj=obj,
+                lines=lines,
+                validated=validated,
+                message=message,
+                action_type=action_type,
+            )
         if need_append:
             self.policies.append(policy_result)
 
@@ -752,7 +764,13 @@ class PolicyEvaluator(object):
 
         return result
 
-    def eval_single_policy(self, rego_path: str, input_type: str, input_data: PolicyInput, external_data_path: str) -> tuple[bool, str]:
+    def eval_single_policy(
+        self,
+        rego_path: str,
+        input_type: str,
+        input_data: PolicyInput,
+        external_data_path: str,
+    ) -> tuple[bool, str]:
         target_type = input_type
         if input_type == "task_result":
             target_type = "task"

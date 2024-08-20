@@ -35,7 +35,7 @@ from ansible_rulebook.condition_types import (
 from ansible_rulebook.exception import (
     InvalidAssignmentException,
 )
-from ansible_policy.policybook.policybook_models import (
+from ansible_policy.policybook_cedar.policybook_models import (
     Action,
     Condition as RuleCondition,
     Policy,
@@ -74,6 +74,9 @@ def visit_condition(parsed_condition: ConditionTypes):
     elif isinstance(parsed_condition, Identifier):
         if parsed_condition.value.startswith("input"):
             return {"Input": parsed_condition.value}
+        # NOTE: add for cedar
+        elif parsed_condition.value.startswith("content"):
+            return {"Content": parsed_condition.value}
         else:
             return {"Variable": parsed_condition.value}
     elif isinstance(parsed_condition, String):
@@ -159,6 +162,7 @@ def visit_policy(parsed_policy: Policy):
         "name": parsed_policy.name,
         "target": parsed_policy.target,
         "condition": generate_condition(parsed_policy.condition),
+        "exception": generate_condition(parsed_policy.exception),
         "actions": visit_actions(parsed_policy.actions),
         "enabled": parsed_policy.enabled,
         "tags": parsed_policy.tags,
@@ -187,8 +191,6 @@ def generate_condition(ansible_condition: RuleCondition):
         data = {"AnyCondition": condition}
     elif ansible_condition.when == "all":
         data = {"AllCondition": condition}
-    elif ansible_condition.when == "not_all":
-        data = {"NotAllCondition": condition}
     else:
         data = {"AllCondition": condition}
 

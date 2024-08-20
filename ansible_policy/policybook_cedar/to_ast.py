@@ -18,7 +18,7 @@ import argparse
 import os
 import glob
 import yaml
-from ansible_policy.policybook.transpiler import PolicyTranspiler
+from ansible_policy.policybook_cedar.transpiler import PolicyTranspiler
 
 
 if __name__ == "__main__":

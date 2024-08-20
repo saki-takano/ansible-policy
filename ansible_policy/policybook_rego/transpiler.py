@@ -21,11 +21,14 @@ import os
 import glob
 import re
 import string
-from ansible_policy.policybook.json_generator import generate_dict_policysets
-from ansible_policy.policybook.policy_parser import parse_policy_sets, VALID_ACTIONS
-from ansible_policy.policybook.rego_model import RegoPolicy, RegoFunc
+from ansible_policy.policybook_rego.json_generator import generate_dict_policysets
+from ansible_policy.policybook_rego.policy_parser import (
+    parse_policy_sets,
+    VALID_ACTIONS,
+)
+from ansible_policy.policybook_rego.rego_model import RegoPolicy, RegoFunc
 from ansible_policy.utils import init_logger
-from ansible_policy.policybook.expressioin_transpiler import ExpressionTranspiler
+from ansible_policy.policybook_rego.expressioin_transpiler import ExpressionTranspiler
 
 logger = init_logger(__name__, os.getenv("ANSIBLE_GK_LOG_LEVEL", "info"))
 
