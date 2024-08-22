@@ -19,7 +19,7 @@ import os
 import glob
 import yaml
 
-from ansible_policy.languages.opa.transpiler import PolicyTranspiler
+from ansible_policy.languages.opa.policy_transpiler import PolicyTranspiler
 
 
 if __name__ == "__main__":

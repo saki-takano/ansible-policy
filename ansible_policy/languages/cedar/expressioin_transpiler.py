@@ -15,7 +15,7 @@
 #  limitations under the License.
 
 import json
-from ansible_policy.policybook_cedar.cedar_model import CedarFunc
+from ansible_policy.languages.cedar.cedar_model import CedarFunc
 
 
 class BaseExpression:

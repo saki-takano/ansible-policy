@@ -77,7 +77,6 @@ class PolicyEvaluator(object):
                     target_data_list = target_loader.run(
                         target_type=target_type,
                         target_path=target_path,
-                        target=actual_policy.metadata.target,
                     )
                     if target_data_list:
                         target_data_cache[target_type] = target_data_list

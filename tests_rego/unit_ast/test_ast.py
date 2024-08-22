@@ -17,16 +17,16 @@ import os
 import pytest
 import yaml
 
-from ansible_policy.policybook_rego.condition_parser import parse_condition
+from ansible_policy.policybook.condition_parser import parse_condition
 from ansible_rulebook.exception import (
     SelectattrOperatorException,
     SelectOperatorException,
 )
-from ansible_policy.policybook_rego.json_generator import (
+from ansible_policy.policybook.json_generator import (
     generate_dict_policysets,
     visit_condition,
 )
-from ansible_policy.policybook_rego.policy_parser import parse_policy_sets
+from ansible_policy.policybook.policy_parser import parse_policy_sets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 

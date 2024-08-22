@@ -2,7 +2,7 @@ import json
 import subprocess
 import os
 import glob
-from ansible_policy.policybook_rego.transpiler import PolicyTranspiler
+from ansible_policy.policybook.transpiler import PolicyTranspiler
 
 INPUT_PASS = "input_pass.json"
 INPUT_FAIL = "input_fail.json"

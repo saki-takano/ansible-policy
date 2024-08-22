@@ -46,6 +46,7 @@ InputTypeProject = "project"
 InputTypeTaskResult = "task_result"
 InputTypeEvent = "event"
 InputTypeRest = "rest"
+InputTypeJson = "json"
 
 
 @dataclass
@@ -646,6 +647,7 @@ class PolicyInput(object):
     task_result: TaskResult = None
     event: Event = None
     rest: APIRequest = None
+    json: any = None
 
     vars_files: dict = field(default_factory=dict)
 
@@ -798,6 +800,15 @@ class PolicyInput(object):
             rest_data = APIRequest.from_dict(rest_data=rest_data)
         p_input.type = InputTypeRest
         p_input.rest = rest_data
+        p_input_list.append(p_input)
+        return p_input_list
+    
+    @staticmethod
+    def from_json_data(json_data: any = None):
+        p_input_list = []
+        p_input = PolicyInput()
+        p_input.type = InputTypeJson
+        p_input.json = json_data
         p_input_list.append(p_input)
         return p_input_list
 
@@ -1043,6 +1054,14 @@ def make_policy_input_for_rest_data(rest_data: Union[APIRequest, dict] = None) -
     return policy_input
 
 
+def make_policy_input_for_json_data(json_data: any = None) -> Dict[str, List[PolicyInput]]:
+    policy_input_json_data = PolicyInput.from_json_data(json_data=json_data)
+    policy_input = {
+        "json": policy_input_json_data,
+    }
+    return policy_input
+
+
 def load_input_from_jobdata(jobdata: dict = {}):
     runner_jobdata_str = ""
     if jobdata:
@@ -1079,4 +1098,12 @@ def load_input_from_event(event: Union[Event, dict] = None):
 
 def load_input_from_rest_data(rest_data: Union[APIRequest, dict] = None):
     policy_input = make_policy_input_for_rest_data(rest_data=rest_data)
+    return policy_input
+
+
+def load_input_from_json_file(filepath: str = None):
+    data = None
+    with open(filepath, "r") as f:
+        data = json.load(f)
+    policy_input = make_policy_input_for_json_data(json_data=data)
     return policy_input

@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
-import ansible_policy.policybook_rego.policybook_models as pm
-from ansible_policy.policybook_rego.condition_parser import (
+import ansible_policy.policybook.policybook_models as pm
+from ansible_policy.policybook.condition_parser import (
     parse_condition as parse_condition_value,
 )
 

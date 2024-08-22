@@ -1,38 +1,6 @@
 import os
 from dataclasses import dataclass, field
-from typing import List, Union
-from ansible.executor.task_result import TaskResult
-
-from ansible_policy.rego_data import (
-    Task,
-    Play,
-    Variables,
-    Event,
-    APIRequest,
-    PolicyInput,
-    load_input_from_jobdata,
-    load_input_from_project_dir,
-    load_input_from_task_result,
-    load_input_from_event,
-    load_input_from_rest_data,
-    process_input_data_with_external_data,
-)
-from ansible_policy.policybook_rego.transpiler import PolicyTranspiler
-from ansible_policy.utils import (
-    init_logger,
-    transpile_yml_policy,
-    match_str_expression,
-    get_tags_from_rego_policy_file,
-    detect_target_module_pattern,
-    detect_target_type_pattern,
-    get_rego_main_package_name,
-    validate_opa_installation,
-    eval_opa_policy,
-    match_target_module,
-    match_target_type,
-    find_task_line_number,
-    find_play_line_number,
-)
+from typing import List, Dict, Self
 
 
 class TargetType:

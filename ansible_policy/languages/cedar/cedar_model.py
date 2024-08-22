@@ -1,7 +1,39 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Dict, Union, Any, Self
 import json
 import string
+
+
+@dataclass
+class InputData:
+    principal: str = ""
+    resource: str = ""
+    action: Union[str, List[str]] = ""
+    
+    entities: List[Any] = None
+    schema: Union[List[Any], Dict[str, Any]] = None
+
+    @classmethod
+    def load(cls, filepath: str) -> Self:
+        json_str = ""
+        with open(filepath, "r") as f:
+            json_str = f.read()
+        return cls.loads(json_str)
+    
+    @classmethod
+    def loads(cls, json_str: str) -> Self:
+        data = json.loads(json_str)
+        instance = cls()
+        if not data:
+            return instance
+        if not isinstance(data, dict):
+            return instance
+
+        for k, v in data.items():
+            if hasattr(instance, k):
+                setattr(instance, k, v)
+        return instance
+
 
 
 @dataclass
@@ -11,12 +43,9 @@ class CedarFunc:
 
 @dataclass
 class CedarPolicy:
-    package: str = ""
-    import_statements: List[str] = field(default_factory=list)
     condition_func: CedarFunc = field(default_factory=CedarFunc)
     exception_func: CedarFunc = field(default_factory=CedarFunc)
     action_func: str = ""
-    vars_declaration: dict = field(default_factory=dict)
     tags: List[str] = field(default_factory=list)
     target: str = ""
 
@@ -29,12 +58,6 @@ class CedarPolicy:
         if self.tags:
             tags_str = json.dumps(self.tags)
             content.append(f"// __tags__ = {tags_str}")
-
-        # vars
-        if self.vars_declaration:
-            for var_name, val in self.vars_declaration.items():
-                val_str = json.dumps(val)
-                content.append(f"{var_name} = {val_str}")
 
         # actions
         content.append(self.action_func)

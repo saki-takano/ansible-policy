@@ -14,22 +14,29 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+
+from dataclasses import dataclass, field
 import traceback
 import yaml
 import argparse
 import os
 import glob
+import re
 import string
-from ansible_policy.policybook_cedar.json_generator import generate_dict_policysets
-from ansible_policy.policybook_cedar.policy_parser import (
-    parse_policy_sets,
-    VALID_ACTIONS,
-)
-from ansible_policy.policybook_cedar.cedar_model import CedarPolicy
-from ansible_policy.utils import init_logger
-from ansible_policy.policybook_cedar.expressioin_transpiler import ExpressionTranspiler
+from typing import List, Union
 
-logger = init_logger(__name__, os.getenv("ANSIBLE_GK_LOG_LEVEL", "info"))
+
+from ansible_policy.models import Policy, PolicyMetadata
+from ansible_policy.policybook.policybook_models import Policybook, PolicySet
+from ansible_policy.policybook.policy_parser import VALID_ACTIONS
+from ansible_policy.utils import init_logger
+from ansible_policy.interfaces.policy_transpiler import PolicyTranspiler
+
+from ansible_policy.languages.cedar.cedar_model import CedarPolicy, CedarFunc
+from ansible_policy.languages.opa.expression_transpiler import ExpressionTranspiler
+
+
+logger = init_logger(__name__, os.getenv("ANSIBLE_POLICY_LOG_LEVEL", "info"))
 
 et = ExpressionTranspiler()
 
@@ -41,71 +48,22 @@ ${action_name}(
 )
 
 
-class PolicyTranspiler:
+@dataclass
+class CedarTranspiler(PolicyTranspiler):
     """
     PolicyTranspiler transforms a policybook to a Cedar policy.
     """
-
-    def __init__(self, tmp_dir=None):
-        self.tmp_dir = tmp_dir
-
-    def run(self, input, outdir):
-        if "extensions/policy" not in outdir:
-            outdir = os.path.join(outdir, "extensions/policy")
-        os.makedirs(outdir, exist_ok=True)
-        if os.path.isfile(input):
-            ast = self.policybook_to_ast(input)
-            self.ast_to_cedar(ast, outdir)
-        elif os.path.isdir(input):
-            pattern1 = f"{input}/**/policies/**/*.yml"
-            pattern2 = f"{input}/**/extensions/policy/**/*.yml"
-            policy_list = []
-            _found = glob.glob(pattern1, recursive=True)
-            if _found:
-                policy_list.extend(_found)
-            _found = glob.glob(pattern2, recursive=True)
-            if _found:
-                policy_list.extend(_found)
-            if not policy_list:
-                input_parts = input.split("/")
-                if "policies" in input_parts or "policy" in input_parts:
-                    pattern3 = f"{input}/**/*.yml"
-                    _found = glob.glob(pattern3, recursive=True)
-                    if _found:
-                        policy_list.extend(_found)
-            for p in policy_list:
-                logger.debug(f"Transpiling policy file `{p}`")
-                outdir_for_this_policy = outdir
-                if "/post_run" in p and "/post_run" not in outdir_for_this_policy:
-                    outdir_for_this_policy = os.path.join(outdir, "post_run")
-                if "/pre_run" not in outdir_for_this_policy:
-                    outdir_for_this_policy = os.path.join(outdir, "pre_run")
-                os.makedirs(outdir_for_this_policy, exist_ok=True)
-                ast = self.policybook_to_ast(p)
-                self.ast_to_cedar(ast, outdir_for_this_policy)
-        else:
-            raise ValueError("invalid input")
-
-    def policybook_to_ast(self, policy_file):
-        policyset = None
-        try:
-            with open(policy_file, "r") as f:
-                data = yaml.safe_load(f.read())
-                policyset = generate_dict_policysets(parse_policy_sets(data))
-        except Exception:
-            err = traceback.format_exc()
-            logger.warning(f"Failed to transpile `{policy_file}`. details: {err}")
-        return policyset
-
-    def ast_to_cedar(self, ast, cedar_dir):
-        for ps in ast:
-            self.policyset_to_cedar(ps, cedar_dir)
-
-    def policyset_to_cedar(self, ast_data, cedar_dir):
-        if "PolicySet" not in ast_data:
+    def run(self, policybook: Policybook) -> List[Policy]:
+        return self.policybook_to_cedar(policybook)
+    
+    def policybook_to_cedar(self, policybook: Policybook) -> List[Policy]:
+        return self.policyset_to_cedar(policybook.policy)
+    
+    def policyset_to_cedar(self, policy_set: PolicySet) -> List[Policy]:
+        if "PolicySet" not in policy_set:
             raise ValueError("no policy found")
 
-        ps = ast_data["PolicySet"]
+        ps = policy_set["PolicySet"]
         if "name" not in ps:
             raise ValueError("name field is empty")
 
@@ -114,20 +72,8 @@ class PolicyTranspiler:
             pol = p.get("Policy", {})
 
             cedar_policy = CedarPolicy()
-            # package
-            _package = pol["name"]
-            _package = self.clean_error_token(pol["name"])
-            cedar_policy.package = _package
-            # import statements
-            cedar_policy.import_statements = [
-                "import future.keywords.if",
-                "import future.keywords.in",
-                "import data.ansible_policy.resolve_var",
-            ]
             # tags
             cedar_policy.tags = pol.get("tags", [])
-            # vars
-            cedar_policy.vars_declaration = ps.get("vars", [])
             # target
             cedar_policy.target = pol.get("target")
 
@@ -153,12 +99,7 @@ class PolicyTranspiler:
                 cedar_policy.action_func = all_action_func
 
             policies.append(cedar_policy)
-
-        for rpol in policies:
-            cedar_output = rpol.to_cedar()
-            with open(os.path.join(cedar_dir, f"{rpol.package}.cedar"), "w") as f:
-                f.write(cedar_output)
-        return
+        return policies
 
     def action_to_rule(self, input: dict):
         action = input["Action"]
