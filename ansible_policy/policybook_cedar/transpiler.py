@@ -169,8 +169,10 @@ class PolicyTranspiler:
         action_args = action.get("action_args", "")
         # principal
         print_principal = action_args.get("principal", "")
-        if type(print_principal) is str:
-            if print_principal == "" or print_principal is None:
+        if print_principal is None:
+            rules.append("principal,")
+        elif type(print_principal) is str:
+            if print_principal == "":
                 rules.append("principal,")
             else:
                 rules.append(f"principal == {print_principal},")
@@ -185,8 +187,10 @@ class PolicyTranspiler:
                 rules.append(f"principal is {print_principal_is},")
         # action
         print_action = action_args.get("action", "")
-        if (type(print_action) is str) or (type(print_action) is list):
-            if print_action == "" or print_action is None:
+        if print_action is None:
+            rules.append("action,")
+        elif (type(print_action) is str) or (type(print_action) is list):
+            if print_action == "":
                 rules.append("action,")
             else:
                 if type(print_action) is list:
@@ -231,20 +235,17 @@ class PolicyTranspiler:
                 rules.append(f"action is {print_action_is},")
         # resource
         print_resource = action_args.get("resource", "")
-        if type(print_resource) is str:
-            if print_resource == "" or print_resource is None:
-                rules.append("resource,")
+        if print_resource is None:
+            rules.append("resource")
+        elif type(print_resource) is str:
+            if print_resource == "":
+                rules.append("resource")
             else:
                 rules.append(f"resource == {print_resource}")
         else:
             print_resource_in = print_resource.get("in", "")
             print_resource_is = print_resource.get("is", "")
-            if print_resource_in == "" and print_resource_is == "":
-                if print_resource == "" or print_resource is None:
-                    rules.append("resource,")
-                else:
-                    rules.append(f"resource == {print_resource}")
-            elif print_resource_in != "" and print_resource_is != "":
+            if print_resource_in != "" and print_resource_is != "":
                 rules.append(f"resource is {print_resource_is} in {print_resource_in}")
             elif print_resource_in != "":
                 rules.append(f"resource in {print_resource_in}")

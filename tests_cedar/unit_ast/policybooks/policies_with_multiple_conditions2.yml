@@ -1,0 +1,33 @@
+---
+- name: Demo policies multiple conditions all
+  hosts: localhost
+  vars:
+    vars_i: 10
+  policies:
+    - name: multiple conditions
+      target: rest
+      condition: 
+        all:
+          - context.first == vars_i
+          - context.second != vars_i
+      exception: principal == resource.owner
+      actions:
+        - permit: 
+            principal: 
+              in: Company::"XXX"
+            action:
+              in:
+                - Action::"allow"
+                - Action::"update"
+            resource:
+              is: File
+              in: Dir::"hello"
+        - forbid: 
+            action: 
+              is: Test
+              in: Action::"allow"
+            resource: 
+              is: File
+      tags:
+        - compliance
+        

@@ -1,0 +1,65 @@
+- PolicySet:
+    hosts:
+    - localhost
+    name: Demo policies multiple conditions all
+    policies:
+    - Policy:
+        actions:
+        - Action:
+            action: permit
+            action_args:
+              action:
+                in:
+                - Action::"allow"
+                - Action::"update"
+              principal:
+                in: Company::"XXX"
+              resource:
+                in: Dir::"hello"
+                is: File
+        - Action:
+            action: forbid
+            action_args:
+              action:
+                in: Action::"allow"
+                is: Test
+              resource:
+                is: File
+        condition:
+          AnyCondition:
+          - AndExpression:
+              lhs:
+                NotEqualsExpression:
+                  lhs:
+                    Context: context.mfa_authenticated
+                  rhs:
+                    String: aaa
+              rhs:
+                NotEqualsExpression:
+                  lhs:
+                    Context: context.mfa_authenticated
+                  rhs:
+                    String: aa1
+          - EqualsExpression:
+              lhs:
+                Resource: resource.request_client_ip
+              rhs:
+                String: 192.168.333.242
+          - EqualsExpression:
+              lhs:
+                Context: context.mfa_authenticated
+              rhs:
+                String: bbb
+        enabled: true
+        exception:
+          AllCondition:
+          - EqualsExpression:
+              lhs:
+                Principal: principal
+              rhs:
+                Resource: resource.owner
+        name: multiple conditions
+        tags:
+        - compliance
+        target: rest
+    vars: {}

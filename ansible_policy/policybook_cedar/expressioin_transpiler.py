@@ -27,8 +27,14 @@ class BaseExpression:
             return json.dumps([self.change_data_format(item) for item in data])
         elif isinstance(data, dict) and "String" in data:
             return f'"{data["String"]}"'
-        elif isinstance(data, dict) and "Content" in data:
-            return data["Content"]
+        elif isinstance(data, dict) and "Context" in data:
+            return data["Context"]
+        elif isinstance(data, dict) and "Principal" in data:
+            return data["Principal"]
+        elif isinstance(data, dict) and "Action" in data:
+            return data["Action"]
+        elif isinstance(data, dict) and "Resource" in data:
+            return data["Resource"]
         elif isinstance(data, dict) and "Variable" in data:
             return data["Variable"]
         elif isinstance(data, dict) and "Boolean" in data:
@@ -47,10 +53,30 @@ class AndAllExpression(BaseExpression):
     def match(self, ast_exp):
         return super().match(ast_exp, "AndExpression") or super().match(ast_exp, "AllCondition")
 
+    def make_cedar(self, conditions):
+        cedar_blocks = ""
+        for cond in conditions:
+            if cedar_blocks == "":
+                cedar_blocks = cond
+            else:
+                cedar_blocks = cedar_blocks + "&&\n    " + cond
+        cedar_blocks = "(" + cedar_blocks + ")"
+        return cedar_blocks
+
 
 class OrAnyExpression(BaseExpression):
     def match(self, ast_exp):
         return super().match(ast_exp, "OrExpression") or super().match(ast_exp, "AnyCondition")
+
+    def make_cedar(self, conditions):
+        cedar_blocks = ""
+        for cond in conditions:
+            if cedar_blocks == "":
+                cedar_blocks = cond
+            else:
+                cedar_blocks = cedar_blocks + "||\n    " + cond
+        cedar_blocks = "(" + cedar_blocks + ")"
+        return cedar_blocks
 
 
 class EqualsExpression(BaseExpression):
@@ -135,6 +161,7 @@ class ExpressionTranspiler:
         return False
 
     def handle_and_all_expression(self, condition, policy_name):
+        conditions = []
         combined_conditions = ""
         if "AndExpression" in condition:
             lhs_condition = condition["AndExpression"]["lhs"]
@@ -143,22 +170,23 @@ class ExpressionTranspiler:
             rhs_condition = condition["AndExpression"]["rhs"]
             rhs_funcs = self.trace_ast_tree(rhs_condition, policy_name)
 
-            combined_conditions = "(" + lhs_funcs.body + "&&\n    " + rhs_funcs.body + ")"
+            conditions = [lhs_funcs.body, rhs_funcs.body]
+            combined_conditions = self.AndAllExpression.make_cedar(conditions)
 
         if "AllCondition" in condition:
             for cond in condition["AllCondition"]:
                 _funcs = self.trace_ast_tree(cond, policy_name)
-                if combined_conditions == "":
-                    combined_conditions = _funcs.body
+                if conditions == []:
+                    conditions = [_funcs.body]
                 else:
-                    combined_conditions = combined_conditions + "&&\n    " + _funcs.body
-            combined_conditions = "(" + combined_conditions + ")"
-
+                    conditions.append(_funcs.body)
+            combined_conditions = self.AndAllExpression.make_cedar(conditions)
         current_func = CedarFunc(body=combined_conditions)
 
         return current_func
 
     def handle_or_any_expression(self, condition, policy_name):
+        conditions = []
         combined_conditions = ""
         if "OrExpression" in condition:
             lhs_condition = condition["OrExpression"]["lhs"]
@@ -166,16 +194,17 @@ class ExpressionTranspiler:
             rhs_condition = condition["OrExpression"]["rhs"]
             rhs_funcs = self.trace_ast_tree(rhs_condition, policy_name)
 
-            combined_conditions = "(" + lhs_funcs.body + "||\n    " + rhs_funcs.body + ")"
+            conditions = [lhs_funcs.body, rhs_funcs.body]
+            combined_conditions = self.OrAnyExpression.make_cedar(conditions)
 
         if "AnyCondition" in condition:
             for cond in condition["AnyCondition"]:
                 _funcs = self.trace_ast_tree(cond, policy_name)
-                if combined_conditions == "":
-                    combined_conditions = _funcs.body
+                if conditions == []:
+                    conditions = [_funcs.body]
                 else:
-                    combined_conditions = combined_conditions + "||\n    " + _funcs.body
-            combined_conditions = "(" + combined_conditions + ")"
+                    conditions.append(_funcs.body)
+            combined_conditions = self.OrAnyExpression.make_cedar(conditions)
 
         current_func = CedarFunc(body=combined_conditions)
 
@@ -194,8 +223,14 @@ class ExpressionTranspiler:
         func_body = ""
         if isinstance(condition, dict) and "String" in condition:
             func_body = f'"{condition["String"]}"'
-        elif isinstance(condition, dict) and "Content" in condition:
-            func_body = condition["Content"]
+        elif isinstance(condition, dict) and "Context" in condition:
+            func_body = condition["Context"]
+        elif isinstance(condition, dict) and "Principal" in condition:
+            func_body = condition["Principal"]
+        elif isinstance(condition, dict) and "Action" in condition:
+            func_body = condition["Action"]
+        elif isinstance(condition, dict) and "Resource" in condition:
+            func_body = condition["Resource"]
         elif isinstance(condition, dict) and "Variable" in condition:
             func_body = condition["Variable"]
         elif isinstance(condition, dict) and "Boolean" in condition:
