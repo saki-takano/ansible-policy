@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from ansible_policy.models import Policy, TargetType, SingleResult, ValidationType, ActionType
 from ansible_policy.policy_input import PolicyInput, LineIdentifier
 from ansible_policy.utils import init_logger, match_str_expression
-
-from ansible_policy.languages.cedar.cedar_model import InputData
+from ansible_policy.interfaces.policy_engine import PolicyEngine
+from ansible_policy.languages.cedar.policy_input import PolicyInputCedar
 
 
 logger = init_logger(__name__, os.getenv("ANSIBLE_POLICY_LOG_LEVEL", "info"))
@@ -17,7 +17,7 @@ cargo_required_file = "Cargo.toml"
 
 
 @dataclass
-class CedarEngine(object):
+class CedarEngine(PolicyEngine):
     workdir: str = ""
 
     def __post_init__(self):
@@ -41,90 +41,46 @@ class CedarEngine(object):
             raise ValueError("`cedar` command is required to evaluate OPA policies")
         
 
-    def eval_single_policy(self, policy: Policy, input_type: str, input_data: PolicyInput, external_data_path: str) -> tuple[bool, dict]:
-        target_type = input_type
-        if input_type == "task_result":
-            target_type = "task"
-        if not match_str_expression(policy.metadata.target, target_type):
-            return False, {}
-        if input_type == "task":
-            task = input_data.task
-            if not match_str_expression(policy.metadata.target_module, task.module_fqcn):
-                return True, {}
-        input_data_str = input_data.to_json()
+    def eval_single_policy(self, policy: Policy, input_data: PolicyInput, external_data_path: str) -> tuple[bool, dict]:
         result = eval_cedar_policy(
-            rego_path=policy.path,
-            input_data=input_data_str,
-            external_data_path=external_data_path,
+            policy_path=policy.path,
+            input_data=input_data,
         )
         return True, result
 
-    def evaluate(self, policy: Policy, target_data: PolicyInput, external_data_path: str="") -> SingleResult:
+    def evaluate(self, policy: Policy, input_data: PolicyInput, external_data_path: str="") -> SingleResult:
         # if policy path is empty, it is not saved as a file yet. do it here
         if not policy.path:
-            package_name = policy.metadata.attrs.get("package", "__no_package_found__")
-            policy_path = os.path.join(self.workdir, f"{package_name}.cedar")
+            policy_name = policy.name.replace(" ", "_")
+            policy_path = os.path.join(self.workdir, f"{policy_name}.cedar")
             policy.save(filepath=policy_path, update_path=True)
-
-        obj = target_data.object
-        target_name = getattr(obj, "name", None)
-        filepath = "__no_filepath__"
-        if hasattr(obj, "filepath"):
-            filepath = getattr(obj, "filepath")
-
-        lines = None
-        body = ""
-        metadata = {}
-        if policy.metadata.target == TargetType.EVENT:
-            lines = {
-                "begin": obj.line,
-                "end": None,
-            }
-            filepath = obj.uuid
-            metadata = obj.__dict__
-        elif policy.metadata.target == TargetType.REST:
-            pass
-        else:
-            with open(filepath, "r") as f:
-                body = f.read()
-            if target_data.type in ["task", "play"]:
-                _identifier = LineIdentifier()
-                block = _identifier.find_block(body=body, obj=obj)
-                lines = block.to_dict()
-
-        policy_name = policy.path
+        
+        policy_name = policy.name
         is_target_type, raw_eval_result = self.eval_single_policy(
             policy=policy,
-            input_type=target_data.type,
-            input_data=target_data,
+            input_data=input_data,
             external_data_path=external_data_path,
         )
-        validation = ValidationType.from_eval_result(eval_result=raw_eval_result, is_target_type=is_target_type)
-        action_type = ActionType.from_eval_result(eval_result=raw_eval_result, is_target_type=is_target_type)
+        allowed = raw_eval_result.get("allowed", False)
+        validation = ValidationType.SUCCESS if allowed else ValidationType.FAILURE
+        action_type = "allow"
         single_result = SingleResult(
-            target_type=target_data.type,
-            target_name=target_name,
-            filepath=filepath,
+            target_type=input_data.type,
+            target_name=input_data.name,
+            filepath=input_data.filepath,
             policy_name=policy_name,
             validation=validation,
             action_type=action_type,
             target_type_matched=is_target_type,
             detail=raw_eval_result,
-            lines=lines,
-            metadata=metadata,
+            lines=input_data.lines,
+            metadata=input_data.metadata,
         )
         return single_result
 
 
-
-# --policies policy.cedar \
-# --entities entities.json \
-# --principal 'User::"alice"' \
-# --action 'Action::"view"' \
-# --resource 'Photo::"VacationPhoto94.jpg"'
-
-# TODO: consider how to use schema field in inputdata 
-def eval_cedar_policy(policy_path: str, input_data: InputData, executable_name: str = "cedar"):
+# TODO: check how to use schema field in CLI
+def eval_cedar_policy(policy_path: str, input_data: PolicyInputCedar, executable_name: str = "cedar"):
     entities_path = "/tmp/test.json"
     with open(entities_path, "w") as f:
         body = json.dumps(input_data.entities)
@@ -146,13 +102,14 @@ def eval_cedar_policy(policy_path: str, input_data: InputData, executable_name: 
     logger.debug(f"proc.stdout: {proc.stdout}")
     logger.debug(f"proc.stderr: {proc.stderr}")
 
-    if proc.returncode != 0:
+    if proc.returncode != 0 and proc.stderr:
         error = f"failed to run `cedar authorize` command; error details:\nSTDOUT: {proc.stdout}\nSTDERR: {proc.stderr}"
         raise ValueError(error)
 
     allowed = "ALLOW" in proc.stdout
     eval_result = {
         "allowed": allowed,
+        "message": "",
     }
     return eval_result
 
@@ -169,7 +126,7 @@ if __name__ == "__main__":
     #     entities=json.loads('[{"uid":{"type":"User","id":"alice"},"attrs":{"age":18},"parents":[]},{"uid":{"type":"Photo","id":"VacationPhoto94.jpg"},"attrs":{},"parents":[{"type":"Album","id":"jane_vacation"}]}]'),
     # )
     sample_data_path = os.path.join(os.path.dirname(__file__), "sample_input_data.json")
-    input_data = InputData.load(sample_data_path)
+    input_data = PolicyInputCedar.load(sample_data_path)
 
     result = eval_cedar_policy(policy_path, input_data)
     print(result)

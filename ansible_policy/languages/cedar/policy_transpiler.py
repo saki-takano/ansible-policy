@@ -33,7 +33,7 @@ from ansible_policy.utils import init_logger
 from ansible_policy.interfaces.policy_transpiler import PolicyTranspiler
 
 from ansible_policy.languages.cedar.cedar_model import CedarPolicy, CedarFunc
-from ansible_policy.languages.opa.expression_transpiler import ExpressionTranspiler
+from ansible_policy.languages.cedar.expression_transpiler import ExpressionTranspiler
 
 
 logger = init_logger(__name__, os.getenv("ANSIBLE_POLICY_LOG_LEVEL", "info"))
@@ -98,7 +98,9 @@ class CedarTranspiler(PolicyTranspiler):
                     all_action_func = all_action_func + action_func
                 cedar_policy.action_func = all_action_func
 
-            policies.append(cedar_policy)
+            cedar_policy.name = pol.get("name", "")
+
+            policies.append(cedar_policy.to_single_policy())
         return policies
 
     def action_to_rule(self, input: dict):

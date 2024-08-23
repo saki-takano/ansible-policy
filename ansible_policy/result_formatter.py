@@ -126,7 +126,7 @@ class ResultFormatter(object):
             for p in f.policies:
                 for t in p.targets:
                     if isinstance(t.validated, bool) and not t.validated:
-                        lines = (None,)
+                        lines = None
                         if t.lines:
                             lines = CodeBlock.dict2str(t.lines)
                         detail = {
@@ -152,6 +152,8 @@ class ResultFormatter(object):
             if self.base_dir:
                 filepath = self.shorten_filepath(filepath)
             lines = d.get("lines", "")
+            if not lines:
+                lines = ""
             message = d.get("message", "").strip()
             pattern = f"{_type} {name} {filepath} {lines}"
             if d["action_type"] == "deny" or d["action_type"] == "allow":

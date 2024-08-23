@@ -6,11 +6,12 @@ import jsonpickle
 import json
 import yaml
 from dataclasses import dataclass, field
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Self
 from ansible.executor.task_result import TaskResult as AnsibleTaskResult
 from ansible.playbook.task import Task as AnsibleTask
 from ansible.parsing.yaml.objects import AnsibleUnicode
 
+from ansible_policy.interfaces.policy_input import PolicyInput
 from ansible_policy.utils import (
     get_module_name_from_task,
     load_external_data,
@@ -150,7 +151,7 @@ def scan_project(
     if not project:
         raise ValueError("failed to scan the target project; project is None")
 
-    base_input_list = PolicyInput.from_scan_result(
+    base_input_list = DataContainer.from_scan_result(
         project=project,
         runtime_data=runtime_data,
         variables=variables,
@@ -160,7 +161,7 @@ def scan_project(
 
     policy_input = {}
     for input_type in input_types:
-        policy_input_per_type = PolicyInput.from_scan_result(
+        policy_input_per_type = DataContainer.from_scan_result(
             project=project,
             runtime_data=runtime_data,
             variables=variables,
@@ -633,7 +634,148 @@ class APIRequest(object):
 
 
 @dataclass
-class PolicyInput(object):
+class PolicyInputAnsibleBase(PolicyInput):
+    name: str = ""
+    connection: any = None
+    port: any = None
+    remote_user: any = None
+    vars: any = None
+    module_defaults: any = None
+    environment: any = None
+    no_log: any = None
+    run_once: any = None
+    ignore_errors: any = None
+    ignore_unreachable: any = None
+    check_mode: any = None
+    diff: any = None
+    any_errors_fatal: any = None
+    throttle: any = None
+    timeout: any = None
+    debugger: any = None
+    become: any = None
+    become_method: any = None
+    become_user: any = None
+    become_flags: any = None
+    become_exe: any = None
+
+
+@dataclass
+class PolicyInputTask(PolicyInputAnsibleBase):
+    type: str = InputTypeTask
+    
+    # task attributes
+    name: str = None
+    __module__: any = None  # When a task is `command: "ls"`, then it will be `__module__: {"command": "ls"}`
+    action: any = None
+    args: any = None
+    _async: any = None  # need the leading `_` to avoid python syntax error
+    changed_when: any = None
+    collections: any = None
+    delay: any = None
+    delegate_facts: any = None
+    delegate_to: any = None
+    failed_when: any = None
+    local_action: any = None
+    loop: any = None
+    loop_control: any = None
+    notify: any = None
+    poll: any = None
+    register: any = None
+    remote_user: any = None
+    retries: any = None
+    tags: any = None
+    until: any = None
+    when: any = None
+    listen: any = None
+
+    # additional useful attributes
+    module: str = ""      # module name written in the file; this can be short module name
+    module_fqcn: str = ""    # module name but FQCN
+    collection: str = ""    # collection name of the module
+
+    @classmethod
+    def from_obj(cls, obj: Task) -> Self:
+        input_data = cls()
+        key_mappings = {
+            "async": "_async",
+        }
+        for k, v in obj.options.items():
+            _k = key_mappings.get(k, k)
+            if hasattr(input_data, _k):
+                setattr(input_data, _k, v)
+        input_data.__module__ = {
+            obj.module: obj.module_options,
+        }
+        input_data.module = obj.module
+        input_data.module_fqcn = obj.module_info.get("fqcn", "")
+        input_data.collection = obj.module_info.get("collection", "")
+        
+        filepath = obj.filepath
+        body = None
+        with open(filepath, "r") as f:
+            body = f.read()
+        input_data.filepath = filepath
+        input_data.lines = LineIdentifier().find_block(body, obj).to_dict()
+        return input_data
+
+    def to_dict(self) -> dict:
+        data = {}
+        for k, v in self.__dict__.items():
+            if k == "__module__":
+                if isinstance(v, dict):
+                    for vk, vv in v.items():
+                        data[vk] = vv
+            elif k == "_async":
+                data["async"] = v
+            else:
+                data[k] = v
+        return data
+
+
+@dataclass
+class PolicyInputPlay(PolicyInputAnsibleBase):
+    type: str = InputTypePlay
+
+    # play attributes
+    name: str = None
+    hosts: any = None
+    gather_facts: any = None
+    gather_subset: any = None
+    gather_timeout: any = None
+    fact_path: any = None
+    vars_files: any = None
+    vars_prompt: any = None
+    roles: any = None
+    handlers: any = None
+    pre_tasks: any = None
+    post_tasks: any = None
+    tasks: any = None
+    force_handlers: any = None
+    max_fail_percentage: any = None
+    serial: any = None
+    strategy: any = None
+    order: any = None
+
+    @classmethod
+    def from_obj(cls, obj: Play) -> Self:
+        input_data = cls()
+        key_mappings = {}
+        for k, v in obj.options.items():
+            _k = key_mappings.get(k, k)
+            if hasattr(input_data, _k):
+                setattr(input_data, _k, v)
+        
+        filepath = obj.filepath
+        body = None
+        with open(filepath, "r") as f:
+            body = f.read()
+        input_data.filepath = filepath
+        input_data.lines = LineIdentifier().find_block(body, obj).to_dict()
+        return input_data
+
+
+@dataclass
+class DataContainer(object):
     type: str = ""
     source: dict = field(default_factory=dict)
     project: any = None
@@ -670,7 +812,7 @@ class PolicyInput(object):
         override_filepath: str=""):
         if input_type == InputTypeTask:
             if not base_input:
-                base_input_list = PolicyInput.from_scan_result(project=project, runtime_data=runtime_data, variables=variables)
+                base_input_list = DataContainer.from_scan_result(project=project, runtime_data=runtime_data, variables=variables)
                 base_input = base_input_list[0]
             tasks = []
             for playbook in base_input.playbooks.values():
@@ -691,7 +833,7 @@ class PolicyInput(object):
             return p_input_list
         elif input_type == InputTypePlay:
             if not base_input:
-                base_input_list = PolicyInput.from_scan_result(project=project, runtime_data=runtime_data)
+                base_input_list = DataContainer.from_scan_result(project=project, runtime_data=runtime_data)
                 base_input = base_input_list[0]
             plays = []
             for playbook in base_input.playbooks.values():
@@ -707,7 +849,7 @@ class PolicyInput(object):
             return p_input_list
         elif input_type == InputTypeRole:
             if not base_input:
-                base_input_list = PolicyInput.from_scan_result(project=project, runtime_data=runtime_data)
+                base_input_list = DataContainer.from_scan_result(project=project, runtime_data=runtime_data)
                 base_input = base_input_list[0]
             roles = []
             for role in base_input.roles.values():
@@ -720,7 +862,7 @@ class PolicyInput(object):
                 p_input_list.append(p_input)
             return p_input_list
         else:
-            p_input = PolicyInput()
+            p_input = DataContainer()
             p_input.type = InputTypeProject
             p_input.source = project.source
             p_input.playbooks = {playbook.filepath: Playbook.from_object(obj=playbook, proj=project) for playbook in project.playbooks}
@@ -775,7 +917,7 @@ class PolicyInput(object):
         _extra_vars = task_result_vars2dict(extra_vars)
         variables.update(_extra_vars)
 
-        p_input = PolicyInput()
+        p_input = DataContainer()
         p_input.type = InputTypeTaskResult
         p_input.task_result = task_result
         p_input.variables = variables
@@ -786,7 +928,7 @@ class PolicyInput(object):
         p_input_list = []
         if isinstance(event, dict):
             event = Event.from_ansible_jobevent(event=event)
-        p_input = PolicyInput()
+        p_input = DataContainer()
         p_input.type = InputTypeEvent
         p_input.event = event
         p_input_list.append(p_input)
@@ -795,7 +937,7 @@ class PolicyInput(object):
     @staticmethod
     def from_rest_data(rest_data: Union[APIRequest, dict] = None):
         p_input_list = []
-        p_input = PolicyInput()
+        p_input = DataContainer()
         if isinstance(rest_data, dict):
             rest_data = APIRequest.from_dict(rest_data=rest_data)
         p_input.type = InputTypeRest
@@ -806,7 +948,7 @@ class PolicyInput(object):
     @staticmethod
     def from_json_data(json_data: any = None):
         p_input_list = []
-        p_input = PolicyInput()
+        p_input = DataContainer()
         p_input.type = InputTypeJson
         p_input.json = json_data
         p_input_list.append(p_input)
@@ -853,7 +995,7 @@ class PolicyInput(object):
                 json_str = file.read()
 
         p_input = jsonpickle.decode(json_str)
-        if not isinstance(p_input, PolicyInput):
+        if not isinstance(p_input, DataContainer):
             raise ValueError(f"a decoded object is not a PolicyInput, but {type(p_input)}")
         return p_input
 
@@ -970,7 +1112,7 @@ def task_result_vars2dict(task_result_vars: dict):
     return key_value
 
 
-def process_input_data_with_external_data(input_type: str, input_data: PolicyInput, external_data_path: str):
+def process_input_data_with_external_data(input_type: str, input_data: DataContainer, external_data_path: str):
     galaxy = load_external_data(ftype="galaxy", fpath=external_data_path)
 
     if input_type == InputTypeTask:
@@ -995,7 +1137,7 @@ def process_input_data_with_external_data(input_type: str, input_data: PolicyInp
 
 
 # make policy input data by scanning target project
-def make_policy_input_with_scan(target_path: str, metadata: dict = {}, variables: Variables = None) -> Dict[str, List[PolicyInput]]:
+def make_policy_input_with_scan(target_path: str, metadata: dict = {}, variables: Variables = None) -> Dict[str, List[DataContainer]]:
     fpath = ""
     dpath = ""
     if os.path.isfile(target_path):
@@ -1030,32 +1172,32 @@ def make_policy_input_with_scan(target_path: str, metadata: dict = {}, variables
     return policy_input
 
 
-def make_policy_input_for_task_result(task_result: TaskResult = None) -> Dict[str, List[PolicyInput]]:
-    policy_input_task_result = PolicyInput.from_task_result(task_result=task_result)
+def make_policy_input_for_task_result(task_result: TaskResult = None) -> Dict[str, List[DataContainer]]:
+    policy_input_task_result = DataContainer.from_task_result(task_result=task_result)
     policy_input = {
         "task_result": policy_input_task_result,
     }
     return policy_input
 
 
-def make_policy_input_for_event(event: Union[Event, dict] = None) -> Dict[str, List[PolicyInput]]:
-    policy_input_event = PolicyInput.from_event(event=event)
+def make_policy_input_for_event(event: Union[Event, dict] = None) -> Dict[str, List[DataContainer]]:
+    policy_input_event = DataContainer.from_event(event=event)
     policy_input = {
         "event": policy_input_event,
     }
     return policy_input
 
 
-def make_policy_input_for_rest_data(rest_data: Union[APIRequest, dict] = None) -> Dict[str, List[PolicyInput]]:
-    policy_input_rest_data = PolicyInput.from_rest_data(rest_data=rest_data)
+def make_policy_input_for_rest_data(rest_data: Union[APIRequest, dict] = None) -> Dict[str, List[DataContainer]]:
+    policy_input_rest_data = DataContainer.from_rest_data(rest_data=rest_data)
     policy_input = {
         "rest": policy_input_rest_data,
     }
     return policy_input
 
 
-def make_policy_input_for_json_data(json_data: any = None) -> Dict[str, List[PolicyInput]]:
-    policy_input_json_data = PolicyInput.from_json_data(json_data=json_data)
+def make_policy_input_for_json_data(json_data: any = None) -> Dict[str, List[DataContainer]]:
+    policy_input_json_data = DataContainer.from_json_data(json_data=json_data)
     policy_input = {
         "json": policy_input_json_data,
     }

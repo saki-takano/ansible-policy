@@ -7,6 +7,7 @@ from typing import List
 
 from ansible_policy.models import Policy
 from ansible_policy.config import PolicyPattern, Source, Config
+from ansible_policy.interfaces.policy_transpiler import PolicyTranspiler
 
 
 @dataclass
@@ -18,6 +19,8 @@ class PolicyLoader(object):
     patterns: List[PolicyPattern] = field(default_factory=list)
     sources: List[Source] = field(default_factory=list)
 
+    transpiler: PolicyTranspiler = None
+
     def __post_init__(self):
         if not self.workdir:
             tmp_dir = tempfile.TemporaryDirectory()
@@ -26,7 +29,7 @@ class PolicyLoader(object):
         
         self.setup_and_install(config_path=self.config_path)
 
-    def setup_and_install(self, policy_path: str="", config_path: str="") -> List[str]:
+    def setup_and_install(self, policy_path: str="", config_path: str="") -> List[Policy]:
         if config_path:
             cfg = Config.load(filepath=config_path)
             self.patterns = cfg.policy.patterns
@@ -55,9 +58,15 @@ class PolicyLoader(object):
         if not os.path.exists(policy_path):
             raise OSError(f"file not found: {policy_path}")
         
-        policies = []
+        loaded_policies = []
         if policy_path:
-            policies = self.setup_and_install(policy_path=policy_path)
+            loaded_policies = self.setup_and_install(policy_path=policy_path)
+        policies = []
+        for p in loaded_policies:
+            _policies = [p]
+            if p.is_policybook:
+                _policies = self.transpiler.run(policybook=p.policybook_data)
+            policies.extend(_policies) 
         return policies
 
     def list_enabled_policies(self, policy_dir):

@@ -4,15 +4,16 @@ import json
 import tempfile
 from dataclasses import dataclass, field
 from ansible_policy.models import Policy, TargetType, SingleResult, ValidationType, ActionType
-from ansible_policy.policy_input import PolicyInput, LineIdentifier
+from ansible_policy.interfaces.policy_input import PolicyInput
 from ansible_policy.utils import init_logger, match_str_expression
+from ansible_policy.interfaces.policy_engine import PolicyEngine
 
 
 logger = init_logger(__name__, os.getenv("ANSIBLE_POLICY_LOG_LEVEL", "info"))
 
 
 @dataclass
-class OPAEngine(object):
+class OPAEngine(PolicyEngine):
     workdir: str = ""
 
     def __post_init__(self):
@@ -35,17 +36,8 @@ class OPAEngine(object):
         else:
             raise ValueError("`opa` command is required to evaluate OPA policies")
 
-    def eval_single_policy(self, policy: Policy, input_type: str, input_data: PolicyInput, external_data_path: str) -> tuple[bool, dict]:
-        target_type = input_type
-        if input_type == "task_result":
-            target_type = "task"
-        if not match_str_expression(policy.metadata.target, target_type):
-            return False, {}
-        if input_type == "task":
-            task = input_data.task
-            if not match_str_expression(policy.metadata.target_module, task.module_fqcn):
-                return True, {}
-        input_data_str = input_data.to_json()
+    def eval_single_policy(self, policy: Policy, input_data: PolicyInput, external_data_path: str) -> tuple[bool, dict]:
+        input_data_str = input_data.dumps()
         result = eval_opa_policy(
             rego_path=policy.path,
             input_data=input_data_str,
@@ -53,59 +45,58 @@ class OPAEngine(object):
         )
         return True, result
 
-    def evaluate(self, policy: Policy, target_data: PolicyInput, external_data_path: str="") -> SingleResult:
+    def evaluate(self, policy: Policy, input_data: PolicyInput, external_data_path: str="") -> SingleResult:
         # if policy path is empty, it is not saved as a file yet. do it here
         if not policy.path:
             package_name = policy.metadata.attrs.get("package", "__no_package_found__")
             policy_path = os.path.join(self.workdir, f"{package_name}.rego")
             policy.save(filepath=policy_path, update_path=True)
 
-        obj = target_data.object
-        target_name = getattr(obj, "name", None)
-        filepath = "__no_filepath__"
-        if hasattr(obj, "filepath"):
-            filepath = getattr(obj, "filepath")
+        # obj = input_data.object
+        # target_name = getattr(obj, "name", None)
+        # filepath = "__no_filepath__"
+        # if hasattr(obj, "filepath"):
+        #     filepath = getattr(obj, "filepath")
 
-        lines = None
-        body = ""
-        metadata = {}
-        if policy.metadata.target == TargetType.EVENT:
-            lines = {
-                "begin": obj.line,
-                "end": None,
-            }
-            filepath = obj.uuid
-            metadata = obj.__dict__
-        elif policy.metadata.target == TargetType.REST:
-            pass
-        else:
-            with open(filepath, "r") as f:
-                body = f.read()
-            if target_data.type in ["task", "play"]:
-                _identifier = LineIdentifier()
-                block = _identifier.find_block(body=body, obj=obj)
-                lines = block.to_dict()
+        # lines = None
+        # body = ""
+        # metadata = {}
+        # if policy.metadata.target == TargetType.EVENT:
+        #     lines = {
+        #         "begin": obj.line,
+        #         "end": None,
+        #     }
+        #     filepath = obj.uuid
+        #     metadata = obj.__dict__
+        # elif policy.metadata.target == TargetType.REST:
+        #     pass
+        # else:
+        #     with open(filepath, "r") as f:
+        #         body = f.read()
+        #     if input_data.type in ["task", "play"]:
+        #         _identifier = LineIdentifier()
+        #         block = _identifier.find_block(body=body, obj=obj)
+        #         lines = block.to_dict()
 
         policy_name = get_rego_main_package_name(rego_path=policy.path)
         is_target_type, raw_eval_result = self.eval_single_policy(
             policy=policy,
-            input_type=target_data.type,
-            input_data=target_data,
+            input_data=input_data,
             external_data_path=external_data_path,
         )
         validation = ValidationType.from_eval_result(eval_result=raw_eval_result, is_target_type=is_target_type)
         action_type = ActionType.from_eval_result(eval_result=raw_eval_result, is_target_type=is_target_type)
         single_result = SingleResult(
-            target_type=target_data.type,
-            target_name=target_name,
-            filepath=filepath,
+            target_type=input_data.type,
+            target_name=input_data.name,
+            filepath=input_data.filepath,
             policy_name=policy_name,
             validation=validation,
             action_type=action_type,
             target_type_matched=is_target_type,
             detail=raw_eval_result,
-            lines=lines,
-            metadata=metadata,
+            lines=input_data.lines,
+            metadata=input_data.metadata,
         )
         return single_result
 

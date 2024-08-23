@@ -31,9 +31,10 @@ class PolicyMetadata(object):
 @dataclass
 class Policy(object):
     path: str = ""
+    name: str = ""
     is_policybook: bool = False
     language: str = ""
-    metadata: PolicyMetadata = None
+    metadata: PolicyMetadata = field(default_factory=PolicyMetadata)
     body: str = ""
     policybook_data: any = None
     
@@ -87,6 +88,12 @@ class ValidationType:
                 violation = True
         elif "ignore" in eval_result_value:
             if not eval_result_value["ignore"]:
+                violation = True
+        elif "permit" in eval_result_value:
+            if not eval_result_value["permit"]:
+                violation = True
+        elif "forbid" in eval_result_value:
+            if eval_result_value["forbid"]:
                 violation = True
         if violation:
             return ValidationType.FAILURE
@@ -155,7 +162,9 @@ class FileResult(object):
 
     def add_policy_result(
         self,
-        eval_result: dict,
+        validation: bool,
+        action_type: str,
+        message: str,
         is_target_type: bool,
         policy_name: str,
         target_type: str,
@@ -164,9 +173,6 @@ class FileResult(object):
     ):
         policy_result = self.get_policy_result(policy_name=policy_name)
         need_append = False
-        validated = ValidationType.from_eval_result(eval_result=eval_result, is_target_type=is_target_type)
-        action_type = ActionType.from_eval_result(eval_result=eval_result, is_target_type=is_target_type)
-        message = eval_result.get("message")
         if not policy_result:
             policy_result = PolicyResult(
                 policy_name=policy_name,
@@ -174,7 +180,7 @@ class FileResult(object):
             )
             need_append = True
         if is_target_type:
-            policy_result.add_target_result(target_name=target_name, lines=lines, validated=validated, message=message, action_type=action_type)
+            policy_result.add_target_result(target_name=target_name, lines=lines, validated=validation, message=message, action_type=action_type)
         if need_append:
             self.policies.append(policy_result)
 
@@ -257,9 +263,11 @@ class EvaluationResult(object):
         policy_name = single_result.policy_name
         target_type = single_result.target_type
         target_name = single_result.target_name
+        validation = single_result.validation
+        action_type = single_result.action_type
+        message = single_result.detail.get("message", "")
         is_target_type = single_result.target_type_matched
         lines = single_result.lines
-        eval_result = single_result.detail
         metadata = single_result.metadata
         file_result = self.get_file_result(filepath=filepath)
         need_append = False
@@ -271,7 +279,9 @@ class EvaluationResult(object):
             need_append = True
 
         file_result.add_policy_result(
-            eval_result=eval_result,
+            validation=validation,
+            action_type=action_type,
+            message=message,
             is_target_type=is_target_type,
             policy_name=policy_name,
             target_type=target_type,
