@@ -71,7 +71,7 @@ dynamic = ["version"]
 version = {attr = "ansible_policy.__version__.__version__"}
 
 [project.scripts]
-ansible-policy = "ansible_policy.eval_policy:main"
+ansible-policy = "ansible_policy.cli.main:main"
 
 [tool.setuptools]
 py-modules = ["ansible_policy"]

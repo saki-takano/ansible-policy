@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from ansible_policy.policybook_rego.expressioin_transpiler import ExpressionTranspiler
+from ansible_policy.policybook.expressioin_transpiler import ExpressionTranspiler
 
 et = ExpressionTranspiler()
 
