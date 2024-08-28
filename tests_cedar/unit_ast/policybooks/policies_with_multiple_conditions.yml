@@ -1,0 +1,32 @@
+---
+- name: Demo policies multiple conditions all
+  hosts: localhost
+  policies:
+    - name: multiple conditions
+      target: rest
+      condition: 
+        any:
+          - context.mfa_authenticated != "aaa" and context.mfa_authenticated != "aa1"
+          - resource.request_client_ip == "192.168.333.242"
+          - context.mfa_authenticated == "bbb"
+      exception: principal == resource.owner
+      actions:
+        - permit: 
+            principal: 
+              in: Company::"XXX"
+            action:
+              in:
+                - Action::"allow"
+                - Action::"update"
+            resource:
+              is: File
+              in: Dir::"hello"
+        - forbid: 
+            action: 
+              is: Test
+              in: Action::"allow"
+            resource: 
+              is: File
+      tags:
+        - compliance
+        

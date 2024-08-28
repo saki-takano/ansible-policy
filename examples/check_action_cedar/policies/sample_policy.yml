@@ -1,0 +1,17 @@
+---
+- name: Demo policy with simple permit
+  hosts: localhost
+  policies:
+    - name: Permit alice to update vacation photo
+      target: cedar
+      condition: 1 == 1
+      actions:
+        - permit: 
+            principal: User::"alice" 
+            action:
+              in:
+                - Action::"update"
+            resource: Album::"jane_vacation"
+      tags:
+        - compliance
+        

@@ -1,0 +1,64 @@
+- PolicySet:
+    hosts:
+    - localhost
+    name: Demo policies multiple conditions all
+    policies:
+    - Policy:
+        actions:
+        - Action:
+            action: permit
+            action_args:
+              action: Action::"allow"
+              principal: User::"admin"
+              resource:
+                in: Dir::"hello"
+        - Action:
+            action: forbid
+            action_args:
+              action:
+                in: Action::"allow"
+                is: Test
+              resource:
+                is: File
+        condition:
+          AllCondition:
+          - AndExpression:
+              lhs:
+                NotEqualsExpression:
+                  lhs:
+                    Resource: resource.first
+                  rhs:
+                    Variable: vars_i
+              rhs:
+                NotEqualsExpression:
+                  lhs:
+                    Resource: resource.first
+                  rhs:
+                    Integer: 0
+          - AndExpression:
+              lhs:
+                NotEqualsExpression:
+                  lhs:
+                    Principal: principal.second
+                  rhs:
+                    Variable: vars_i
+              rhs:
+                NotEqualsExpression:
+                  lhs:
+                    Principal: principal.second
+                  rhs:
+                    Integer: 0
+        enabled: true
+        exception:
+          AllCondition:
+          - EqualsExpression:
+              lhs:
+                Principal: principal
+              rhs:
+                Resource: resource.owner
+        name: multiple conditions
+        tags:
+        - compliance
+        target: rest
+    vars:
+      vars_i: 10
