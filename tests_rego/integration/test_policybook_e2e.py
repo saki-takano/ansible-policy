@@ -2,7 +2,8 @@ import json
 import subprocess
 import os
 import glob
-from ansible_policy.policybook.transpiler import PolicyTranspiler
+from ansible_policy.languages.opa.policy_transpiler import OPATranspiler
+from ansible_policy.policy_loader import PolicyLoader
 
 INPUT_PASS = "input_pass.json"
 INPUT_FAIL = "input_fail.json"
@@ -49,17 +50,19 @@ def get_eval_result(output, action="allow"):
         return ValueError("no result found")
 
 
-transpiler = PolicyTranspiler()
 test_source_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 class TestTranspiler:
     def get_test_result(self, target_dir):
-        target_dir = os.path.join(test_source_dir, "in_operator")
+        transpiler = OPATranspiler()
+        loader = PolicyLoader(transpiler=transpiler)
+
         input_policybook = os.path.join(target_dir, POLICYBOOK)
         input_pass = os.path.join(target_dir, INPUT_PASS)
         input_fail = os.path.join(target_dir, INPUT_FAIL)
-        transpiler.run(input_policybook, target_dir)
+        policies = loader.run(input_policybook)
+        policies[0].save(f"{target_dir}/extensions/policy/test.rego", True)
         pattern = f"{target_dir}/**/*.rego"
         _found = glob.glob(pattern, recursive=True)
         rego = _found[0]
@@ -182,4 +185,8 @@ class TestTranspiler:
 
     def test_multi_condition_notall(self):
         target_dir = os.path.join(test_source_dir, "multi_condition_notall")
+        self.get_test_result(target_dir)
+
+    def test_brackets(self):
+        target_dir = os.path.join(test_source_dir, "brackets")
         self.get_test_result(target_dir)

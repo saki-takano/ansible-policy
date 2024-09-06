@@ -582,6 +582,7 @@ class SelectNotExpression(BaseExpression):
 
     def make_rego(self, name, ast_exp):
         condition = self.make_rego_exp(ast_exp)
+        print(condition)
         return super().make_rego(name, condition)
 
 

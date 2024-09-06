@@ -1,0 +1,12 @@
+---
+- name: equal operator test
+  hosts: localhost 
+  policies:
+    - name: equal operator test
+      target: task
+      condition: input.test_val == "str_val" or (input.test_val == "val1" and input.test_val2 == "val2")
+      actions:
+        - allow:
+            msg: equal operator test
+      tags:
+        - security
