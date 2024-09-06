@@ -12,6 +12,7 @@ Welcome to Ansible Plicybook documentation
    conditions
    actions
    variables
+   pluggable_policy_engines
    .. TODO
    .. installation
    .. collections
